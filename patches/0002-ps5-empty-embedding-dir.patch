@@ -1,0 +1,20 @@
+diff --git a/examples/common/common.cpp b/examples/common/common.cpp
+index d5496f6..b3681bd 100644
+--- a/examples/common/common.cpp
++++ b/examples/common/common.cpp
+@@ -847,6 +847,15 @@ bool SDContextParams::print_devices() const {
+ void SDContextParams::build_embedding_map() {
+     static const std::vector<std::string> valid_ext = {".gguf", ".safetensors", ".pt", ".ckpt"};
+ 
++    // An unset --embd-dir leaves this empty, and the filesystem is then asked
++    // about "". On Linux stat("") fails with ENOENT and fs::exists returns
++    // false; the PS5's libc returns EINVAL, which libc++ turns into a
++    // filesystem_error that nothing here catches, so the program dies before
++    // it loads anything. Nothing to map without a directory anyway.
++    if (embedding_dir.empty()) {
++        return;
++    }
++
+     const fs::path embedding_dir_path = fs::u8path(embedding_dir);
+     if (!fs::exists(embedding_dir_path) || !fs::is_directory(embedding_dir_path)) {
+         return;

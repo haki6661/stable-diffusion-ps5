@@ -1,0 +1,37 @@
+diff --git a/src/core/util.cpp b/src/core/util.cpp
+index a691b42..a18bb86 100644
+--- a/src/core/util.cpp
++++ b/src/core/util.cpp
+@@ -33,6 +33,12 @@
+ #include "ggml.h"
+ #include "stable-diffusion.h"
+
++#if defined(__PROSPERO__)
++#include <pthread.h>
++// The PS5 payload SDK has no <sched.h> affinity API; Sony's is this one.
++extern "C" int scePthreadGetaffinity(pthread_t thread, uint64_t* mask);
++#endif
++
+ bool ends_with(const std::string& str, const std::string& ending) {
+     if (str.length() >= ending.length()) {
+         return (str.compare(str.length() - ending.length(), ending.length(), ending) == 0);
+@@ -339,6 +345,19 @@ bool MmapWrapper::copy_data(void* buf, size_t n, size_t offset) const {
+ // https://github.com/ggerganov/llama.cpp/blob/master/examples/common.cpp
+ // LICENSE: https://github.com/ggerganov/llama.cpp/blob/master/LICENSE
+ int32_t sd_get_num_physical_cores() {
++#if defined(__PROSPERO__)
++    // A PS5 payload may only run on the CPUs its affinity mask allows (5 of 16
++    // on firmware 9.60 and 13.60), and the console's own services share them.
++    // Keep two free: loading all of them starves those services, and ggml's
++    // barrier spins at every operation, so the thread count is the real load
++    // setting. PS5LM measured a console shutdown twice when all five were busy
++    // (its patches/0001-ps5-safe-cpu-defaults.patch, docs/CONSOLE.md).
++    uint64_t ps5_mask = 0;
++    if (scePthreadGetaffinity(pthread_self(), &ps5_mask) == 0 && ps5_mask != 0) {
++        return std::max(1, __builtin_popcountll(ps5_mask) - 2);
++    }
++    return 2;
++#endif
+ #ifdef __linux__
+     // enumerate the set of thread siblings, num entries is num cores
+     std::unordered_set<std::string> siblings;
